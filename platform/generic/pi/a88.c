@@ -20,29 +20,13 @@
 #include <sbi_utils/reset/fdt_reset.h>
 #include <sbi_utils/i2c/fdt_i2c.h>
 
-#define DA9063_REG_PAGE_CON		0x00
-#define DA9063_REG_CONTROL_A		0x0e
-#define DA9063_REG_CONTROL_D		0x11
-#define DA9063_REG_CONTROL_F		0x13
-#define DA9063_REG_DEVICE_ID		0x81
 
-#define DA9063_CONTROL_A_M_POWER1_EN	(1 << 6)
-#define DA9063_CONTROL_A_M_POWER_EN	(1 << 5)
-#define DA9063_CONTROL_A_STANDBY	(1 << 3)
-
-#define DA9063_CONTROL_D_TWDSCALE_MASK	0x07
-
-#define DA9063_CONTROL_F_WAKEUP	(1 << 2)
-#define DA9063_CONTROL_F_SHUTDOWN	(1 << 1)
-
-#define PMIC_CHIP_ID_DA9063		0x61
 
 static struct {
-	struct i2c_adapter *adapter;
 	uint32_t reg;
-} da9063;
+} pi_x88;
 
-static int da9063_system_reset_check(u32 type, u32 reason)
+static int x88_system_reset_check(u32 type, u32 reason)
 {
 	switch (type) {
 	case SBI_SRST_RESET_TYPE_SHUTDOWN:
@@ -55,16 +39,16 @@ static int da9063_system_reset_check(u32 type, u32 reason)
 	return 0;
 }
 
-static inline int da9063_sanity_check(struct i2c_adapter *adap, uint32_t reg)
+static inline int x88_sanity_check(uint32_t reg)
 {
-	uint8_t val;
-	int rc = i2c_adapter_reg_write(adap, reg, DA9063_REG_PAGE_CON, 0x02);
+	uint8_t val=0x02;
+	int rc = 0;
 
 	if (rc)
 		return rc;
 
 	/* check set page*/
-	rc = i2c_adapter_reg_read(adap, reg, 0x0, &val);
+	rc = 0;
 	if (rc)
 		return rc;
 
@@ -72,93 +56,81 @@ static inline int da9063_sanity_check(struct i2c_adapter *adap, uint32_t reg)
 		return SBI_ENODEV;
 
 	/* read and check device id */
-	rc = i2c_adapter_reg_read(adap, reg, DA9063_REG_DEVICE_ID, &val);
+	rc = 0;
 	if (rc)
 		return rc;
 
-	if (val != PMIC_CHIP_ID_DA9063)
+	if (val != 0x02)
 		return SBI_ENODEV;
 
 	return 0;
 }
 
-static inline int da9063_stop_watchdog(struct i2c_adapter *adap, uint32_t reg)
+static inline int x88_stop_watchdog(uint32_t reg)
 {
-	uint8_t val;
-	int rc = i2c_adapter_reg_write(adap, reg,
-					DA9063_REG_PAGE_CON, 0x00);
+	uint8_t val=1;
+	int rc = 0;
 
 	if (rc)
 		return rc;
 
-	rc = i2c_adapter_reg_read(adap, reg, DA9063_REG_CONTROL_D, &val);
+	rc = 0;
 	if (rc)
 		return rc;
 
-	if ((val & DA9063_CONTROL_D_TWDSCALE_MASK) == 0)
+	if ((val & 0xff) == 0)
 		return 0;
 
-	val &= ~DA9063_CONTROL_D_TWDSCALE_MASK;
+	val &= ~0xff;
 
-	return i2c_adapter_reg_write(adap, reg, DA9063_REG_CONTROL_D, val);
+	return 0;
 }
 
-static inline int da9063_shutdown(struct i2c_adapter *adap, uint32_t reg)
+static inline int x88_shutdown(uint32_t reg)
 {
-	int rc = i2c_adapter_reg_write(adap, reg,
-					DA9063_REG_PAGE_CON, 0x00);
+	int rc = 0;
 
 	if (rc)
 		return rc;
 
-	return i2c_adapter_reg_write(adap, reg,
-				     DA9063_REG_CONTROL_F,
-				     DA9063_CONTROL_F_SHUTDOWN);
+	return 0;
 }
 
-static inline int da9063_reset(struct i2c_adapter *adap, uint32_t reg)
+static inline int x88_reset(uint32_t reg)
 {
-	int rc = i2c_adapter_reg_write(adap, reg,
-					DA9063_REG_PAGE_CON, 0x00);
+	int rc = 0;
 
 	if (rc)
 		return rc;
 
-	rc = i2c_adapter_reg_write(adap, reg,
-				   DA9063_REG_CONTROL_F,
-				   DA9063_CONTROL_F_WAKEUP);
+	rc = 0;
 	if (rc)
 		return rc;
 
-	return i2c_adapter_reg_write(adap, reg,
-				DA9063_REG_CONTROL_A,
-				DA9063_CONTROL_A_M_POWER1_EN |
-				DA9063_CONTROL_A_M_POWER_EN |
-				DA9063_CONTROL_A_STANDBY);
+	return 0;
 }
 
-static void da9063_system_reset(u32 type, u32 reason)
+static void x88_system_reset(u32 type, u32 reason)
 {
-	struct i2c_adapter *adap = da9063.adapter;
-	uint32_t reg = da9063.reg;
+	uint32_t reg = pi_x88.reg;
 	int rc;
 
 	if (adap) {
 		/* sanity check */
-		rc = da9063_sanity_check(adap, reg);
+		rc = x88_sanity_check(reg);
 		if (rc) {
-			sbi_printf("%s: chip is not da9063 PMIC\n", __func__);
+			sbi_printf("%s: chip is not pi_x88\n", __func__);
 			goto skip_reset;
 		}
 
 		switch (type) {
 		case SBI_SRST_RESET_TYPE_SHUTDOWN:
-			da9063_shutdown(adap, reg);
+			x88_shutdown(reg);
 			break;
 		case SBI_SRST_RESET_TYPE_COLD_REBOOT:
 		case SBI_SRST_RESET_TYPE_WARM_REBOOT:
-			da9063_stop_watchdog(adap, reg);
-			da9063_reset(adap, reg);
+			x88_stop_watchdog(reg);
+			x88_reset(reg);
 			break;
 		}
 	}
@@ -167,17 +139,16 @@ skip_reset:
 	sbi_hart_hang();
 }
 
-static struct sbi_system_reset_device da9063_reset_i2c = {
-	.name = "da9063-reset",
-	.system_reset_check = da9063_system_reset_check,
-	.system_reset = da9063_system_reset
+static struct sbi_system_reset_device x88_reset = {
+	.name = "x88-reset",
+	.system_reset_check = x88_system_reset_check,
+	.system_reset = x88_system_reset
 };
 
-static int da9063_reset_init(void *fdt, int nodeoff,
+static int x88_reset_init(void *fdt, int nodeoff,
 			     const struct fdt_match *match)
 {
-	int rc, i2c_bus;
-	struct i2c_adapter *adapter;
+	int rc;
 	uint64_t addr;
 
 	/* we are dlg,da9063 node */
@@ -185,36 +156,26 @@ static int da9063_reset_init(void *fdt, int nodeoff,
 	if (rc)
 		return rc;
 
-	da9063.reg = addr;
+	pi_x88.reg = addr;
 
-	/* find i2c bus parent node */
-	i2c_bus = fdt_parent_offset(fdt, nodeoff);
-	if (i2c_bus < 0)
-		return i2c_bus;
 
-	/* i2c adapter get */
-	rc = fdt_i2c_adapter_get(fdt, i2c_bus, &adapter);
-	if (rc)
-		return rc;
 
-	da9063.adapter = adapter;
-
-	sbi_system_reset_add_device(&da9063_reset_i2c);
+	sbi_system_reset_add_device(&x88_reset);
 
 	return 0;
 }
 
-static const struct fdt_match da9063_reset_match[] = {
-	{ .compatible = "dlg,da9063", .data = (void *)TRUE },
+static const struct fdt_match x88_reset_match[] = {
+	{ .compatible = "pi,x88", .data = (void *)TRUE },
 	{ },
 };
 
-struct fdt_reset fdt_reset_da9063 = {
-	.match_table = da9063_reset_match,
-	.init = da9063_reset_init,
+struct fdt_reset fdt_reset_x88 = {
+	.match_table = x88_reset_match,
+	.init = x88_reset_init,
 };
 
-static u64 sifive_fu740_tlbr_flush_limit(const struct fdt_match *match)
+static u64 pi_a88_tlbr_flush_limit(const struct fdt_match *match)
 {
 	/*
 	 * Needed to address CIP-1200 errata on SiFive FU740
@@ -226,31 +187,31 @@ static u64 sifive_fu740_tlbr_flush_limit(const struct fdt_match *match)
 	return 0;
 }
 
-static int sifive_fu740_final_init(bool cold_boot,
+static int pi_a88_final_init(bool cold_boot,
 				   const struct fdt_match *match)
 {
 	int rc;
 	void *fdt = fdt_get_address();
 
 	if (cold_boot) {
-		rc = fdt_reset_driver_init(fdt, &fdt_reset_da9063);
+		rc = fdt_reset_driver_init(fdt, &fdt_reset_x88);
 		if (rc)
-			sbi_printf("%s: failed to find da9063 for reset\n",
+			sbi_printf("%s: failed to find x88 for reset\n",
 				   __func__);
 	}
 
 	return 0;
 }
 
-static const struct fdt_match sifive_fu740_match[] = {
-	{ .compatible = "sifive,fu740" },
+static const struct fdt_match pi_a88_match[] = {
+	{ .compatible = "pi,a88" },
 	{ .compatible = "sifive,fu740-c000" },
 	{ .compatible = "sifive,hifive-unmatched-a00" },
 	{ },
 };
 
-const struct platform_override sifive_fu740 = {
-	.match_table = sifive_fu740_match,
-	.tlbr_flush_limit = sifive_fu740_tlbr_flush_limit,
-	.final_init = sifive_fu740_final_init,
+const struct platform_override pi_a88 = {
+	.match_table = pi_a88_match,
+	.tlbr_flush_limit = pi_a88_tlbr_flush_limit,
+	.final_init = pi_a88_final_init,
 };
